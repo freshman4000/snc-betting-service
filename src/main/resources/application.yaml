@@ -1,0 +1,30 @@
+server:
+  port: 8090
+betservice:
+  win:
+    rate: 0.35
+spring:
+  application:
+    name: snc-betting-service
+  server:
+    port: 8080
+  data:
+    mongodb:
+      uri: mongodb://root:password@localhost:37018/admin
+      database: betting
+  webflux:
+    base-path: /api/v1
+  kafka:
+    consumer:
+      bootstrap-servers: localhost:9092
+      group-id: snc-betting-service
+      auto-offset-reset: earliest
+    producer:
+      bootstrap-servers: localhost:9092
+    topics:
+      snc-consumer-topic: snc-betting-service
+      snc-producer-topic: snc-gw-topic
+
+  logging:
+    level:
+      org.apache.kafka.clients: WARN
