@@ -1,67 +1,32 @@
 package com.scs.sncbettingservice.services;
 
-import com.scs.sncbettingservice.exceptions.InsufficientBalanceException;
-import com.scs.sncbettingservice.models.Bet;
-import com.scs.sncbettingservice.models.dto.BalanceDto;
-import com.scs.sncbettingservice.models.dto.BetRs;
+import com.scs.sncbettingservice.repositories.BettingRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Mono;
+import snc.sncmodels.services.betting.rq.BetRq;
+
+import java.util.Random;
 
 @Slf4j
 @Service
 public class BetService {
     @Value("${betservice.win.rate}")
     private Double winRate;
-    private WebClient webClient;
+    private final BettingRepository bettingRepository;
+    private final Mapper mapper;
 
-    public BetService(WebClient webClient) {
-        this.webClient = webClient;
+    public BetService(BettingRepository bettingRepository, Mapper mapper) {
+        this.bettingRepository = bettingRepository;
+        this.mapper = mapper;
     }
 
-    public Mono<ResponseEntity<BetRs>> makeBet(Bet bet) {
-        return getBalance(bet.getUserId())
-                .map(balance -> {
-                    if (balance.getMoney().compareTo(bet.getBetMoney()) < 0) throw new InsufficientBalanceException();
-                    if (Math.random() > winRate) balance.setMoney(balance.getMoney().subtract(bet.getBetMoney()));
-                    else balance.setMoney(balance.getMoney().add(bet.getBetMoney()));
-                    return balance;
-                })
-                .zipWhen(balance -> updateBalance(bet.getUserId(), balance))
-                .map(tuple2 -> {
-                    BalanceDto a = tuple2.getT1();
-                    BalanceDto b = tuple2.getT2();
-                    return new ResponseEntity<>(new BetRs()
-                            .setId(bet.getId())
-                            .setBalance(b.getMoney())
-                            .setPreviousBet(bet), HttpStatus.OK);
-                })
-                .doOnError(error -> log.error(error.getMessage()));
+    public BetRq calculateBetResult(BetRq betRq) {
+        BetRq result = new BetRq()
+                .setUserId(betRq.getUserId())
+                .setAmount(new Random().nextDouble() > winRate ? "-" + betRq.getAmount() : betRq.getAmount());
+        bettingRepository.save(mapper.mapBetRqToBet(betRq, result)).subscribe();
+        return result;
     }
 
-    public Mono<BalanceDto> getBalance(String userId) {
-        return webClient
-                .get()
-                .uri("http://localhost:8088/userapp/api/v1/users/balance")
-                .header("X-USER-ID", userId)
-                .retrieve()
-                .bodyToMono(BalanceDto.class);
-    }
-
-    public Mono<BalanceDto> updateBalance(String userId, BalanceDto balanceDto) {
-        return webClient
-                .put()
-                .uri("http://localhost:8088/userapp/api/v1/users/balance")
-                .header("X-USER-ID", userId)
-                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                .body(Mono.just(balanceDto), BalanceDto.class)
-                .retrieve()
-                .bodyToMono(BalanceDto.class);
-    }
 }
